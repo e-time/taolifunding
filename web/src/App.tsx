@@ -1,0 +1,366 @@
+import { useState, useEffect, useMemo } from 'react';
+import './index.css';
+
+interface TableRow {
+  symbol: string;
+  lighterFunding?: number;
+  binanceFunding?: number;
+  hyperliquidFunding?: number;
+  edgexFunding?: number;
+  grvtFunding?: number;
+  asterFunding?: number;
+  backpackFunding?: number;
+  variationalFunding?: number;
+  paradexFunding?: number;
+  etherealFunding?: number;
+  dydxFunding?: number;
+  
+  binanceSpread?: number;
+  asterSpread?: number;
+  paradexSpread?: number;
+  variationalSpread?: number;
+
+  maxArbSpread?: number;
+  shortExchange?: string;
+  longExchange?: string;
+  estimatedProfit?: number;
+  bidAskSpread?: number;
+  costSpread?: number;
+  [key: string]: number | string | undefined | null;
+}
+
+const EXCHANGES = [
+  { key: 'lighterFunding', label: 'Lighter' },
+  { key: 'binanceFunding', label: 'Binance' },
+  { key: 'hyperliquidFunding', label: 'Hyperliquid' },
+  { key: 'edgexFunding', label: 'Edgex' },
+  { key: 'grvtFunding', label: 'GRVT' },
+  { key: 'asterFunding', label: 'Aster' },
+  { key: 'backpackFunding', label: 'Backpack' },
+  { key: 'variationalFunding', label: 'Variational' },
+  { key: 'paradexFunding', label: 'Paradex' },
+  { key: 'etherealFunding', label: 'Ethereal' },
+  { key: 'dydxFunding', label: 'dYdX' },
+];
+
+function formatRate(value: number | undefined | null) {
+  if (value === undefined || value === null) return '-';
+  const percent = value * 100;
+  return percent.toFixed(4) + '%';
+}
+
+function getClass(value: number | undefined | null) {
+  if (value === undefined || value === null) return 'neutral';
+  return value > 0 ? 'positive' : value < 0 ? 'negative' : 'neutral';
+}
+
+function App() {
+  const [rows, setRows] = useState<TableRow[]>([]);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [visibleExchanges, setVisibleExchanges] = useState<Record<string, boolean>>(
+    EXCHANGES.reduce((acc, ex) => ({ ...acc, [ex.key]: true }), {})
+  );
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({
+    key: 'maxArbSpread',
+    direction: 'desc',
+  });
+  const [loading, setLoading] = useState(true);
+  const [capital, setCapital] = useState<number>(1000);
+  const [symbolFilter, setSymbolFilter] = useState('');
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const res = await fetch('/api/rates');
+        const data = await res.json();
+        setRows(data.rows);
+        setLastUpdated(data.lastUpdated);
+        setLoading(false);
+      } catch (err) {
+        console.error("Failed to fetch rates", err);
+      }
+    };
+
+    fetchData();
+    const interval = setInterval(fetchData, 5000); // Poll every 5s
+    return () => clearInterval(interval);
+  }, []);
+
+  const toggleExchange = (key: string) => {
+    setVisibleExchanges((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleSort = (key: string) => {
+    setSortConfig((current) => ({
+      key,
+      direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc',
+    }));
+  };
+
+  const processedRows = useMemo(() => {
+    return rows.map(row => {
+      let maxRate = -Infinity;
+      let minRate = Infinity;
+      let maxExchange = '';
+      let minExchange = '';
+      
+      EXCHANGES.forEach(ex => {
+          if (!visibleExchanges[ex.key]) return;
+
+          const rate = row[ex.key] as number | undefined | null;
+          if (rate !== undefined && rate !== null) {
+              if (rate > maxRate) {
+                  maxRate = rate;
+                  maxExchange = ex.label;
+              }
+              if (rate < minRate) {
+                  minRate = rate;
+                  minExchange = ex.label;
+              }
+          }
+      });
+
+                  if (maxExchange && minExchange && maxExchange !== minExchange) {
+
+                      const spread = maxRate - minRate;
+
+                      
+
+                      // Get spreads for selected exchanges (default to 0.0005 if unknown)
+
+                      const getSpread = (exKey: string) => {
+
+                          if (exKey === 'binanceFunding') return row.binanceSpread ?? 0.0002;
+
+                          if (exKey === 'asterFunding') return row.asterSpread ?? 0.0005;
+
+                          if (exKey === 'paradexFunding') return row.paradexSpread ?? 0.0005;
+
+                          if (exKey === 'variationalFunding') return row.variationalSpread ?? 0.001; // Variational might be higher?
+
+                          return 0.0005; // Default for others
+
+                      };
+
+      
+
+                      const shortExchangeKey = EXCHANGES.find(e => e.label === maxExchange)?.key || '';
+
+                      const longExchangeKey = EXCHANGES.find(e => e.label === minExchange)?.key || '';
+
+                      
+
+                      const costSpread = getSpread(shortExchangeKey) + getSpread(longExchangeKey);
+
+                      // 3 cycles/day
+
+                      const grossProfit = capital * spread * 3;
+
+                      // Cost is incurred once per open/close?
+
+                      // Funding is daily. Spread cost is one-time (entry + exit).
+
+                      // "Est. 24h Profit" usually implies pure funding.
+
+                      // But user wants to judge if it's worth it.
+
+                      // Let's show Gross Profit and "Cost to Open".
+
+                      // Cost to Open = Capital * CostSpread.
+
+                      
+
+                      return {
+
+                          ...row,
+
+                          maxArbSpread: spread,
+
+                          shortExchange: maxExchange,
+
+                          longExchange: minExchange,
+
+                          estimatedProfit: grossProfit,
+
+                          costSpread: costSpread
+
+                      };
+
+                  }
+
+                  
+
+                  return {
+
+                      ...row,
+
+                      maxArbSpread: 0,
+
+                      shortExchange: undefined,
+
+                      longExchange: undefined,
+
+                      estimatedProfit: 0,
+
+                      costSpread: 0
+
+                  };
+
+      
+    });
+  }, [rows, visibleExchanges, capital]);
+
+  const sortedRows = useMemo(() => {
+    const filtered = processedRows.filter(row => 
+      row.symbol.toLowerCase().includes(symbolFilter.toLowerCase())
+    );
+    const sorted = [...filtered];
+    sorted.sort((a, b) => {
+      const aVal = a[sortConfig.key];
+      const bVal = b[sortConfig.key];
+
+      if (aVal === undefined && bVal === undefined) return 0;
+      if (aVal === undefined) return 1;
+      if (bVal === undefined) return -1;
+
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        return sortConfig.direction === 'asc'
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal);
+      }
+
+      const numA = Number(aVal);
+      const numB = Number(bVal);
+      return sortConfig.direction === 'asc' ? numA - numB : numB - numA;
+    });
+    return sorted;
+  }, [processedRows, sortConfig]);
+
+  const topOpportunities = useMemo(() => {
+    return [...processedRows]
+      .sort((a, b) => (b.maxArbSpread || 0) - (a.maxArbSpread || 0))
+      .slice(0, 3);
+  }, [processedRows]);
+
+  return (
+    <div className="container">
+      <h1>Ritmex Funding Monitor</h1>
+
+      <div style={{display: 'flex', gap: '20px', marginBottom: '20px'}}>
+        {topOpportunities.map((opp, idx) => (
+          <div key={opp.symbol} style={{flex: 1, background: '#2a2a2a', padding: '15px', borderRadius: '8px', borderLeft: `4px solid ${idx === 0 ? '#ffd700' : '#aaa'}`}}>
+            <div style={{fontSize: '0.9em', color: '#888', marginBottom: '5px'}}>TOP {idx + 1} OPPORTUNITY</div>
+            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+              <strong style={{fontSize: '1.4em'}}>{opp.symbol}</strong>
+              <span style={{fontSize: '1.2em', color: '#ffd700', fontWeight: 'bold'}}>{formatRate(opp.maxArbSpread)}</span>
+            </div>
+            <div style={{marginTop: '10px', fontSize: '0.9em'}}>
+              <span className="badge badge-short">↓</span> {opp.shortExchange} 
+              <span style={{margin: '0 10px'}}>→</span>
+              <span className="badge badge-long">↑</span> {opp.longExchange}
+            </div>
+            <div style={{marginTop: '5px', display: 'flex', justifyContent: 'space-between'}}>
+              <span style={{color: '#4caf50', fontWeight: 'bold'}}>Profit: ${opp.estimatedProfit?.toFixed(2)}/d</span>
+              <span style={{color: '#f44336'}}>Cost: {formatRate(opp.costSpread)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      
+      <div className="controls">
+        <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginRight: '20px', paddingRight: '20px', borderRight: '1px solid #444'}}>
+          <strong>Position ($/Side):</strong>
+          <input 
+            type="number" 
+            value={capital} 
+            onChange={(e) => setCapital(Number(e.target.value))}
+            style={{background: '#333', color: '#fff', border: '1px solid #555', padding: '5px', borderRadius: '4px', width: '100px'}}
+          />
+        </div>
+        <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginRight: '20px', paddingRight: '20px', borderRight: '1px solid #444'}}>
+          <strong>Filter Symbol:</strong>
+          <input 
+            type="text" 
+            placeholder="e.g. BTC"
+            value={symbolFilter} 
+            onChange={(e) => setSymbolFilter(e.target.value)}
+            style={{background: '#333', color: '#fff', border: '1px solid #555', padding: '5px', borderRadius: '4px', width: '120px'}}
+          />
+        </div>
+        <strong>Show Exchanges:</strong>
+        {EXCHANGES.map((ex) => (
+          <label key={ex.key} className="exchange-toggle">
+            <input
+              type="checkbox"
+              checked={visibleExchanges[ex.key]}
+              onChange={() => toggleExchange(ex.key)}
+            />
+            {ex.label}
+          </label>
+        ))}
+      </div>
+
+      {loading ? (
+        <p>Loading data...</p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th onClick={() => handleSort('symbol')}>
+                Symbol {sortConfig.key === 'symbol' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+              </th>
+              <th onClick={() => handleSort('maxArbSpread')} style={{minWidth: '100px'}}>
+                 Max Arb {sortConfig.key === 'maxArbSpread' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+              </th>
+              <th onClick={() => handleSort('estimatedProfit')} style={{minWidth: '100px'}}>
+                 Est. 24h Profit {sortConfig.key === 'estimatedProfit' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+              </th>
+              <th onClick={() => handleSort('costSpread')} style={{minWidth: '100px'}}>
+                 Est. Cost {sortConfig.key === 'costSpread' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+              </th>
+              <th>Strategy (Short / Long)</th>
+              {EXCHANGES.map((ex) => (
+                visibleExchanges[ex.key] && (
+                  <th key={ex.key} onClick={() => handleSort(ex.key)}>
+                    {ex.label} {sortConfig.key === ex.key ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                  </th>
+                )
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {sortedRows.map((row) => (
+              <tr key={row.symbol}>
+                <td>{row.symbol}</td>
+                <td style={{fontWeight: 'bold', color: '#ffd700'}}>{formatRate(row.maxArbSpread)}</td>
+                <td style={{fontWeight: 'bold', color: '#4caf50'}}>${row.estimatedProfit?.toFixed(2)}</td>
+                <td style={{color: '#f44336'}}>{row.costSpread ? formatRate(row.costSpread) : '-'}</td>
+                <td>
+                  {row.shortExchange ? (
+                    <div className="strategy-cell">
+                      <span><span className="badge badge-short">↓</span>{row.shortExchange}</span>
+                      <span style={{color: '#444'}}>|</span>
+                      <span><span className="badge badge-long">↑</span>{row.longExchange}</span>
+                    </div>
+                  ) : '-'}
+                </td>
+                {EXCHANGES.map((ex) => (
+                  visibleExchanges[ex.key] && (
+                    <td key={ex.key} className={getClass(row[ex.key] as number)}>
+                      {formatRate(row[ex.key] as number)}
+                    </td>
+                  )
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p style={{textAlign: 'center', color: '#666', marginTop: '20px'}}>
+        Last updated: {lastUpdated ? new Date(lastUpdated).toLocaleString() : '-'}
+      </p>
+    </div>
+  );
+}
+
+export default App;

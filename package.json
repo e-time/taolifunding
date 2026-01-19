@@ -1,0 +1,32 @@
+{
+  "name": "ritmex-dex-cli",
+  "module": "index.tsx",
+  "type": "module",
+  "private": true,
+  "imports": {
+    "ink-table": "./src/components/InkTable.tsx"
+  },
+  "scripts": {
+    "start": "bun run index.tsx -- --capital 1000",
+    "lighter-history": "bun run lighter-history.tsx -- --capital 2000",
+    "server": "bun run server.ts",
+    "web": "vite web"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "vite": "^5.1.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@pppp606/ink-chart": "^0.2.1",
+    "ink": "^6.3.1",
+    "ink-table": "^3.1.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }
+}
