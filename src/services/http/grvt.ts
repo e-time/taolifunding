@@ -6,6 +6,14 @@ const JSON_HEADERS = {
   "Content-Type": "application/json",
 };
 
+interface GrvtBookResponse {
+  result?: {
+    instrument: string;
+    bids: Array<{ price: string; size: string }>;
+    asks: Array<{ price: string; size: string }>;
+  };
+}
+
 export async function fetchGrvtInstruments(): Promise<GrvtInstrument[]> {
   const response = await fetch(`${GRVT_BASE_URL}/instruments`, {
     method: "POST",
@@ -81,4 +89,45 @@ export async function fetchGrvtFundingRates(): Promise<Record<string, number>> {
   }
 
   return next;
+}
+
+export async function fetchGrvtBookTicker(): Promise<Record<string, { bid: number, ask: number }>> {
+  const instruments = await fetchGrvtInstruments();
+  const prices: Record<string, { bid: number, ask: number }> = {};
+  const delayMs = 200; 
+
+  for (let index = 0; index < instruments.length; index += 1) {
+    const instrument = instruments[index];
+    if (!instrument) continue;
+    try {
+      const response = await fetch(`${GRVT_BASE_URL}/book`, {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({
+          instrument: instrument.instrument,
+          depth: 10,
+        }),
+      });
+
+      if (response.ok) {
+        const payload = (await response.json()) as GrvtBookResponse;
+        const result = payload.result;
+        if (result && result.bids.length > 0 && result.asks.length > 0) {
+            const bestBid = parseFloat(result.bids[0].price);
+            const bestAsk = parseFloat(result.asks[0].price);
+            if (bestBid > 0 && bestAsk > 0) {
+                prices[instrument.base.toUpperCase()] = { bid: bestBid, ask: bestAsk };
+            }
+        }
+      }
+    } catch (e) {
+      console.error(`GRVT book fetch failed for ${instrument.instrument}:`, e);
+    }
+
+    if (index < instruments.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+
+  return prices;
 }

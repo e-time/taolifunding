@@ -8,6 +8,7 @@ const EXCHANGE_LABELS = {
   edgex: "Edgex",
   grvt: "GRVT",
   aster: "Aster",
+  ethereal: "Ethereal",
 } as const;
 
 type ExchangeKey = keyof typeof EXCHANGE_LABELS;
@@ -30,6 +31,7 @@ export const calculateTopSpreads = (rows: TableRow[], limit: number, capitalUsd:
     if (enabledExchanges.includes("edgex")) rateEntries.push({ key: "edgexFunding", exchange: "edgex", value: row.edgexFunding });
     if (enabledExchanges.includes("grvt")) rateEntries.push({ key: "grvtFunding", exchange: "grvt", value: row.grvtFunding });
     if (enabledExchanges.includes("aster")) rateEntries.push({ key: "asterFunding", exchange: "aster", value: row.asterFunding });
+    if (enabledExchanges.includes("ethereal")) rateEntries.push({ key: "etherealFunding", exchange: "ethereal", value: row.etherealFunding });
 
     const available = rateEntries.filter((entry) => entry.value !== undefined) as Array<RateEntry & { value: number }>;
     if (available.length < 2) return;

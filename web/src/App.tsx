@@ -19,14 +19,18 @@ interface TableRow {
   asterSpread?: number;
   paradexSpread?: number;
   variationalSpread?: number;
+  grvtSpread?: number;
+  etherealSpread?: number;
 
   maxArbSpread?: number;
   shortExchange?: string;
   longExchange?: string;
   estimatedProfit?: number;
   bidAskSpread?: number;
-  costSpread?: number;
-  [key: string]: number | string | undefined | null;
+  openCost?: number;
+  closeCost?: number;
+  marketPrices?: Record<string, { bid: number; ask: number }>;
+  [key: string]: any;
 }
 
 const EXCHANGES = [
@@ -120,93 +124,75 @@ function App() {
           }
       });
 
-                  if (maxExchange && minExchange && maxExchange !== minExchange) {
+      if (maxExchange && minExchange && maxExchange !== minExchange) {
+          const spread = maxRate - minRate;
+          const getSpread = (exKey: string) => {
+              if (exKey === 'binanceFunding') return row.binanceSpread ?? 0.0002;
+              if (exKey === 'asterFunding') return row.asterSpread ?? 0.0005;
+              if (exKey === 'paradexFunding') return row.paradexSpread ?? 0.0005;
+              if (exKey === 'variationalFunding') return row.variationalSpread ?? 0.001;
+              if (exKey === 'grvtFunding') return row.grvtSpread ?? 0.0005;
+              if (exKey === 'etherealFunding') return row.etherealSpread ?? 0.0005;
+              return 0.0005;
+          };
 
-                      const spread = maxRate - minRate;
+          const shortExchangeKey = EXCHANGES.find(e => e.label === maxExchange)?.key || '';
+          const longExchangeKey = EXCHANGES.find(e => e.label === minExchange)?.key || '';
 
-                      
+          let openCost: number | null = null;
+          let closeCost: number | null = null;
 
-                      // Get spreads for selected exchanges (default to 0.0005 if unknown)
+          if (row.marketPrices) {
+              const getSource = (key: string) => key.replace('Funding', '').toLowerCase();
+              const shortSource = getSource(shortExchangeKey);
+              const longSource = getSource(longExchangeKey);
 
-                      const getSpread = (exKey: string) => {
+              const shortPrices = row.marketPrices[shortSource];
+              const longPrices = row.marketPrices[longSource];
 
-                          if (exKey === 'binanceFunding') return row.binanceSpread ?? 0.0002;
-
-                          if (exKey === 'asterFunding') return row.asterSpread ?? 0.0005;
-
-                          if (exKey === 'paradexFunding') return row.paradexSpread ?? 0.0005;
-
-                          if (exKey === 'variationalFunding') return row.variationalSpread ?? 0.001; // Variational might be higher?
-
-                          return 0.0005; // Default for others
-
-                      };
-
-      
-
-                      const shortExchangeKey = EXCHANGES.find(e => e.label === maxExchange)?.key || '';
-
-                      const longExchangeKey = EXCHANGES.find(e => e.label === minExchange)?.key || '';
-
-                      
-
-                      const costSpread = getSpread(shortExchangeKey) + getSpread(longExchangeKey);
-
-                      // 3 cycles/day
-
-                      const grossProfit = capital * spread * 3;
-
-                      // Cost is incurred once per open/close?
-
-                      // Funding is daily. Spread cost is one-time (entry + exit).
-
-                      // "Est. 24h Profit" usually implies pure funding.
-
-                      // But user wants to judge if it's worth it.
-
-                      // Let's show Gross Profit and "Cost to Open".
-
-                      // Cost to Open = Capital * CostSpread.
-
-                      
-
-                      return {
-
-                          ...row,
-
-                          maxArbSpread: spread,
-
-                          shortExchange: maxExchange,
-
-                          longExchange: minExchange,
-
-                          estimatedProfit: grossProfit,
-
-                          costSpread: costSpread
-
-                      };
-
+              if (shortPrices && longPrices) {
+                  const sellPriceOpen = shortPrices.bid;
+                  const buyPriceOpen = longPrices.ask;
+                  if (sellPriceOpen > 0) {
+                      openCost = (buyPriceOpen - sellPriceOpen) / sellPriceOpen;
                   }
 
-                  
+                  const buyPriceClose = shortPrices.ask;
+                  const sellPriceClose = longPrices.bid;
+                  if (buyPriceClose > 0) {
+                      closeCost = (buyPriceClose - sellPriceClose) / buyPriceClose;
+                  }
+              }
+          }
 
-                  return {
+          if (openCost === null || closeCost === null) {
+              const totalEstimatedSpread = getSpread(shortExchangeKey) + getSpread(longExchangeKey);
+              openCost = totalEstimatedSpread / 2;
+              closeCost = totalEstimatedSpread / 2;
+          }
 
-                      ...row,
+          const grossProfit = capital * spread * 3;
 
-                      maxArbSpread: 0,
+          return {
+              ...row,
+              maxArbSpread: spread,
+              shortExchange: maxExchange,
+              longExchange: minExchange,
+              estimatedProfit: grossProfit,
+              openCost: openCost,
+              closeCost: closeCost
+          };
+      }
 
-                      shortExchange: undefined,
-
-                      longExchange: undefined,
-
-                      estimatedProfit: 0,
-
-                      costSpread: 0
-
-                  };
-
-      
+      return {
+          ...row,
+          maxArbSpread: 0,
+          shortExchange: undefined,
+          longExchange: undefined,
+          estimatedProfit: 0,
+          openCost: 0,
+          closeCost: 0
+      };
     });
   }, [rows, visibleExchanges, capital]);
 
@@ -261,7 +247,7 @@ function App() {
             </div>
             <div style={{marginTop: '5px', display: 'flex', justifyContent: 'space-between'}}>
               <span style={{color: '#4caf50', fontWeight: 'bold'}}>Profit: ${opp.estimatedProfit?.toFixed(2)}/d</span>
-              <span style={{color: '#f44336'}}>Cost: {formatRate(opp.costSpread)}</span>
+              <span style={{color: '#f44336'}}>Open: {formatRate(opp.openCost)} | Close: {formatRate(opp.closeCost)}</span>
             </div>
           </div>
         ))}
@@ -315,8 +301,11 @@ function App() {
               <th onClick={() => handleSort('estimatedProfit')} style={{minWidth: '100px'}}>
                  Est. 24h Profit {sortConfig.key === 'estimatedProfit' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
               </th>
-              <th onClick={() => handleSort('costSpread')} style={{minWidth: '100px'}}>
-                 Est. Cost {sortConfig.key === 'costSpread' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+              <th onClick={() => handleSort('openCost')} style={{minWidth: '100px'}}>
+                 Open Cost {sortConfig.key === 'openCost' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+              </th>
+              <th onClick={() => handleSort('closeCost')} style={{minWidth: '100px'}}>
+                 Close Cost {sortConfig.key === 'closeCost' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
               </th>
               <th>Strategy (Short / Long)</th>
               {EXCHANGES.map((ex) => (
@@ -334,7 +323,8 @@ function App() {
                 <td>{row.symbol}</td>
                 <td style={{fontWeight: 'bold', color: '#ffd700'}}>{formatRate(row.maxArbSpread)}</td>
                 <td style={{fontWeight: 'bold', color: '#4caf50'}}>${row.estimatedProfit?.toFixed(2)}</td>
-                <td style={{color: '#f44336'}}>{row.costSpread ? formatRate(row.costSpread) : '-'}</td>
+                <td style={{color: '#f44336'}}>{formatRate(row.openCost)}</td>
+                <td style={{color: '#f44336'}}>{formatRate(row.closeCost)}</td>
                 <td>
                   {row.shortExchange ? (
                     <div className="strategy-cell">

@@ -20,6 +20,8 @@ export interface TableRow {
   asterSpread?: number;
   paradexSpread?: number;
   variationalSpread?: number;
+  grvtSpread?: number;
+  etherealSpread?: number;
   lighterEdgexArb?: number;
   lighterGrvtArb?: number;
   edgexGrvtArb?: number;
@@ -31,6 +33,8 @@ export interface TableRow {
   binanceAsterArb?: number;
   binanceLighterArb?: number;
   binanceParadexArb?: number;
+  grvtEtherealArb?: number;
+  marketPrices?: Record<string, { bid: number; ask: number }>;
 }
 
 export interface FundingSnapshot {
@@ -57,6 +61,8 @@ export type SortKey = keyof Pick<
   | "asterSpread"
   | "paradexSpread"
   | "variationalSpread"
+  | "grvtSpread"
+  | "etherealSpread"
   | "lighterEdgexArb"
   | "lighterGrvtArb"
   | "edgexGrvtArb"
@@ -68,6 +74,7 @@ export type SortKey = keyof Pick<
   | "binanceAsterArb"
   | "binanceLighterArb"
   | "binanceParadexArb"
+  | "grvtEtherealArb"
 >;
 export type SortDirection = "asc" | "desc";
 

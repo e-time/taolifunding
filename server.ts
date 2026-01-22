@@ -1,12 +1,12 @@
 import { fetchLighterFundingRates } from "./src/services/http/lighter";
 import { fetchBinancePremiumIndex, fetchBinanceFundingInfo, fetchBinanceBookTicker } from "./src/services/http/binance";
-import { fetchGrvtFundingRates } from "./src/services/http/grvt";
+import { fetchGrvtFundingRates, fetchGrvtBookTicker } from "./src/services/http/grvt";
 import { fetchAsterFundingRates, fetchAsterBookTicker } from "./src/services/http/aster";
 import { fetchBackpackFundingRates } from "./src/services/http/backpack";
 import { fetchHyperliquidPredictedFundings, mapHlPerpToEntries } from "./src/services/http/hyperliquid";
 import { fetchVariationalFundingRates, fetchVariationalBookTicker } from "./src/services/http/variational";
 import { fetchParadexFundingRates, fetchParadexBookTicker } from "./src/services/http/paradex";
-import { fetchEtherealFundingRates } from "./src/services/http/ethereal";
+import { fetchEtherealFundingRates, fetchEtherealBookTicker } from "./src/services/http/ethereal";
 import { fetchDydxFundingRates } from "./src/services/http/dydx";
 import { EdgexClient } from "./src/server/edgex-client";
 import { buildTableRows } from "./src/utils/table";
@@ -30,6 +30,9 @@ let cache = {
   asterSpreads: {} as Record<string, number>,
   paradexSpreads: {} as Record<string, number>,
   variationalSpreads: {} as Record<string, number>,
+  grvtSpreads: {} as Record<string, number>,
+  etherealSpreads: {} as Record<string, number>,
+  marketPrices: {} as Record<string, Record<string, { bid: number, ask: number }>>,
   lastUpdated: new Date(),
 };
 
@@ -38,12 +41,13 @@ async function updateCache() {
   const start = Date.now();
 
   try {
-    const [lighter, binanceIndex, binanceInfo, binanceTicker, grvt, aster, asterTicker, backpack, hlPredicted, variational, variationalTicker, paradex, paradexTicker, ethereal, dydx] = await Promise.allSettled([
+    const [lighter, binanceIndex, binanceInfo, binanceTicker, grvt, grvtTicker, aster, asterTicker, backpack, hlPredicted, variational, variationalTicker, paradex, paradexTicker, ethereal, etherealTicker, dydx] = await Promise.allSettled([
       fetchLighterFundingRates(),
       fetchBinancePremiumIndex(),
       fetchBinanceFundingInfo(),
       fetchBinanceBookTicker(),
       fetchGrvtFundingRates(),
+      fetchGrvtBookTicker(),
       fetchAsterFundingRates(),
       fetchAsterBookTicker(),
       fetchBackpackFundingRates(),
@@ -53,6 +57,7 @@ async function updateCache() {
       fetchParadexFundingRates(),
       fetchParadexBookTicker(),
       fetchEtherealFundingRates(),
+      fetchEtherealBookTicker(),
       fetchDydxFundingRates(),
     ]);
 
@@ -75,26 +80,43 @@ async function updateCache() {
 
     if (binanceTicker.status === "fulfilled") {
         cache.binanceSpreads = {};
+        cache.marketPrices.binance = {};
         binanceTicker.value.forEach(t => {
             const bid = parseFloat(t.bidPrice);
             const ask = parseFloat(t.askPrice);
+            const symbol = t.symbol.toUpperCase();
             if (bid > 0 && ask > 0) {
-                cache.binanceSpreads[t.symbol.toUpperCase()] = (ask - bid) / ask;
+                cache.binanceSpreads[symbol] = (ask - bid) / ask;
+                cache.marketPrices.binance[symbol] = { bid, ask };
             }
         });
     }
 
     if (grvt.status === "fulfilled") cache.grvt = grvt.value;
+    if (grvtTicker.status === "fulfilled") {
+        cache.grvtSpreads = {};
+        cache.marketPrices.grvt = {};
+        Object.entries(grvtTicker.value).forEach(([symbol, prices]) => {
+            const { bid, ask } = prices;
+            if (bid > 0 && ask > 0) {
+                cache.grvtSpreads[symbol] = (ask - bid) / ask;
+                cache.marketPrices.grvt[symbol] = { bid, ask };
+            }
+        });
+    }
+
     if (aster.status === "fulfilled") cache.aster = aster.value;
     
     if (asterTicker.status === "fulfilled") {
         cache.asterSpreads = {};
+        cache.marketPrices.aster = {};
         asterTicker.value.forEach(t => {
             const bid = parseFloat(t.bidPrice);
             const ask = parseFloat(t.askPrice);
             if (bid > 0 && ask > 0) {
                 const symbol = t.symbol.replace("USDT", "").toUpperCase();
                 cache.asterSpreads[symbol] = (ask - bid) / ask;
+                cache.marketPrices.aster[symbol] = { bid, ask };
             }
         });
     }
@@ -105,11 +127,14 @@ async function updateCache() {
     if (variational.status === "fulfilled") cache.variational = variational.value;
     if (variationalTicker.status === "fulfilled") {
         cache.variationalSpreads = {};
+        cache.marketPrices.variational = {};
         variationalTicker.value.forEach(t => {
             const bid = parseFloat(t.bidPrice);
             const ask = parseFloat(t.askPrice);
             if (bid > 0 && ask > 0) {
-                cache.variationalSpreads[t.symbol.toUpperCase()] = (ask - bid) / ask;
+                const symbol = t.symbol.toUpperCase();
+                cache.variationalSpreads[symbol] = (ask - bid) / ask;
+                cache.marketPrices.variational[symbol] = { bid, ask };
             }
         });
     }
@@ -117,16 +142,31 @@ async function updateCache() {
     if (paradex.status === "fulfilled") cache.paradex = paradex.value;
     if (paradexTicker.status === "fulfilled") {
         cache.paradexSpreads = {};
+        cache.marketPrices.paradex = {};
         paradexTicker.value.forEach(t => {
             const bid = parseFloat(t.bidPrice);
             const ask = parseFloat(t.askPrice);
             if (bid > 0 && ask > 0) {
-                cache.paradexSpreads[t.symbol.toUpperCase()] = (ask - bid) / ask;
+                const symbol = t.symbol.toUpperCase();
+                cache.paradexSpreads[symbol] = (ask - bid) / ask;
+                cache.marketPrices.paradex[symbol] = { bid, ask };
             }
         });
     }
 
     if (ethereal.status === "fulfilled") cache.ethereal = ethereal.value;
+    if (etherealTicker.status === "fulfilled") {
+        cache.etherealSpreads = {};
+        cache.marketPrices.ethereal = {};
+        Object.entries(etherealTicker.value).forEach(([symbol, prices]) => {
+            const { bid, ask } = prices;
+            if (bid > 0 && ask > 0) {
+                cache.etherealSpreads[symbol] = (ask - bid) / ask;
+                cache.marketPrices.ethereal[symbol] = { bid, ask };
+            }
+        });
+    }
+
     if (dydx.status === "fulfilled") cache.dydx = dydx.value;
 
     cache.lastUpdated = new Date();
@@ -135,9 +175,11 @@ async function updateCache() {
     const btcSpread = cache.binanceSpreads['BTCUSDT'] || 0;
     const asterBtcSpread = cache.asterSpreads['BTC'] || 0;
     const paradexBtcSpread = cache.paradexSpreads['BTC'] || 0;
+    const grvtBtcSpread = cache.grvtSpreads['BTC'] || 0;
+    const etherealBtcSpread = cache.etherealSpreads['BTC'] || 0;
     
     console.log(`Cache updated in ${Date.now() - start}ms`);
-    console.log(`[Sample Spreads] BTC - Binance: ${(btcSpread*100).toFixed(4)}% | Aster: ${(asterBtcSpread*100).toFixed(4)}% | Paradex: ${(paradexBtcSpread*100).toFixed(4)}%`);
+    console.log(`[Sample Spreads] BTC - Binance: ${(btcSpread*100).toFixed(4)}% | Aster: ${(asterBtcSpread*100).toFixed(4)}% | Paradex: ${(paradexBtcSpread*100).toFixed(4)}% | GRVT: ${(grvtBtcSpread*100).toFixed(4)}% | Ethereal: ${(etherealBtcSpread*100).toFixed(4)}%`);
   } catch (e) {
     console.error("Error updating cache:", e);
   }
@@ -146,8 +188,8 @@ async function updateCache() {
 // Initial update
 updateCache();
 
-// Poll every 60 seconds (adjust as needed, CLI uses 5 mins for some, but web users expect faster)
-setInterval(updateCache, 60 * 1000);
+// Poll every 10 seconds for more responsive spread/cost data (Web users expect fast updates)
+setInterval(updateCache, 10 * 1000);
 
 const server = Bun.serve({
   port: 3001,
@@ -183,7 +225,10 @@ const server = Bun.serve({
         cache.binanceSpreads,
         cache.asterSpreads,
         cache.paradexSpreads,
-        cache.variationalSpreads
+        cache.variationalSpreads,
+        cache.grvtSpreads,
+        cache.etherealSpreads,
+        cache.marketPrices
       );
 
       return new Response(JSON.stringify({

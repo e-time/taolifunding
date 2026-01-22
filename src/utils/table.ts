@@ -23,7 +23,10 @@ export const buildTableRows = (
   binanceSpreads: Record<string, number> = {},
   asterSpreads: Record<string, number> = {},
   paradexSpreads: Record<string, number> = {},
-  variationalSpreads: Record<string, number> = {}
+  variationalSpreads: Record<string, number> = {},
+  grvtSpreads: Record<string, number> = {},
+  etherealSpreads: Record<string, number> = {},
+  marketPrices: Record<string, Record<string, { bid: number; ask: number }>> = {}
 ): TableRow[] => {
   const lighterMap = new Map<string, number>();
   const binanceMap = new Map<string, number>();
@@ -111,11 +114,22 @@ export const buildTableRows = (
       if (asterSpreads[symbol] !== undefined) row.asterSpread = asterSpreads[symbol];
       if (paradexSpreads[symbol] !== undefined) row.paradexSpread = paradexSpreads[symbol];
       if (variationalSpreads[symbol] !== undefined) row.variationalSpread = variationalSpreads[symbol];
+      if (grvtSpreads[symbol] !== undefined) row.grvtSpread = grvtSpreads[symbol];
+      if (etherealSpreads[symbol] !== undefined) row.etherealSpread = etherealSpreads[symbol];
 
       // Keep generic spread as Binance's for compatibility if needed, or average/best
       if (binanceSpreads[symbol] !== undefined) {
         row.bidAskSpread = binanceSpreads[symbol];
       }
+
+      // Populate market prices
+      row.marketPrices = {};
+      const priceSources = ['binance', 'aster', 'paradex', 'variational', 'grvt', 'ethereal'];
+      priceSources.forEach(source => {
+        if (marketPrices[source] && marketPrices[source][symbol]) {
+          row.marketPrices![source] = marketPrices[source][symbol];
+        }
+      });
 
       const availableRates = [
         lighterFunding,
@@ -225,6 +239,10 @@ export const buildTableRows = (
         row.binanceParadexArb = binanceFunding - paradexFunding;
       }
 
+      if (grvtFunding !== undefined && etherealFunding !== undefined) {
+        row.grvtEtherealArb = grvtFunding - etherealFunding;
+      }
+
       accumulator.push(row);
 
       return accumulator;
@@ -273,6 +291,24 @@ export const buildDisplayRow = (row: TableRow, columns: SortKey[]): DisplayRow =
       case "bidAskSpread":
         accumulator[column] = formatRateValue(row.bidAskSpread);
         break;
+      case "grvtSpread":
+        accumulator[column] = formatRateValue(row.grvtSpread);
+        break;
+      case "etherealSpread":
+        accumulator[column] = formatRateValue(row.etherealSpread);
+        break;
+      case "binanceSpread":
+        accumulator[column] = formatRateValue(row.binanceSpread);
+        break;
+      case "asterSpread":
+        accumulator[column] = formatRateValue(row.asterSpread);
+        break;
+      case "paradexSpread":
+        accumulator[column] = formatRateValue(row.paradexSpread);
+        break;
+      case "variationalSpread":
+        accumulator[column] = formatRateValue(row.variationalSpread);
+        break;
       case "lighterEdgexArb":
         accumulator[column] = formatArbValue(row.lighterEdgexArb);
         break;
@@ -305,6 +341,9 @@ export const buildDisplayRow = (row: TableRow, columns: SortKey[]): DisplayRow =
         break;
       case "binanceParadexArb":
         accumulator[column] = formatArbValue(row.binanceParadexArb);
+        break;
+      case "grvtEtherealArb":
+        accumulator[column] = formatArbValue(row.grvtEtherealArb);
         break;
       default: {
         const exhaustiveCheck: never = column;

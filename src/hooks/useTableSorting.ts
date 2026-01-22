@@ -27,6 +27,7 @@ const ARB_KEYS: SortKey[] = [
   "binanceGrvtArb",
   "binanceAsterArb",
   "binanceLighterArb",
+  "grvtEtherealArb",
 ];
 
 const compareRows = (a: TableRow, b: TableRow, key: SortKey, direction: "asc" | "desc") => {
