@@ -20,12 +20,14 @@ export const buildTableRows = (
   paradexRates: ParadexFundingEntry[] = [],
   etherealRates: EtherealFundingEntry[] = [],
   dydxRates: DydxFundingEntry[] = [],
+  nadoRates: any[] = [],
   binanceSpreads: Record<string, number> = {},
   asterSpreads: Record<string, number> = {},
   paradexSpreads: Record<string, number> = {},
   variationalSpreads: Record<string, number> = {},
   grvtSpreads: Record<string, number> = {},
   etherealSpreads: Record<string, number> = {},
+  nadoSpreads: Record<string, number> = {},
   marketPrices: Record<string, Record<string, { bid: number; ask: number }>> = {}
 ): TableRow[] => {
   const lighterMap = new Map<string, number>();
@@ -37,6 +39,7 @@ export const buildTableRows = (
   const paradexMap = new Map<string, number>();
   const etherealMap = new Map<string, number>();
   const dydxMap = new Map<string, number>();
+  const nadoMap = new Map<string, number>();
 
   lighterRates.forEach((entry) => {
     const symbolKey = entry.symbol.toUpperCase();
@@ -85,6 +88,11 @@ export const buildTableRows = (
     dydxMap.set(symbolKey, entry.rate);
   });
 
+  nadoRates.forEach((entry) => {
+    const symbolKey = entry.symbol.toUpperCase();
+    nadoMap.set(symbolKey, entry.rate);
+  });
+
   return Object.values(edgexFundingById)
     .filter((entry): entry is EdgexFundingEntry => Boolean(entry))
     .reduce<TableRow[]>((accumulator, entry) => {
@@ -100,6 +108,7 @@ export const buildTableRows = (
       const paradexFunding = paradexMap.get(symbol);
       const etherealFunding = etherealMap.get(symbol);
       const dydxFunding = dydxMap.get(symbol);
+      const nadoFunding = nadoMap.get(symbol);
       
       // Assign spreads if available
       const row: TableRow = {
@@ -116,6 +125,7 @@ export const buildTableRows = (
       if (variationalSpreads[symbol] !== undefined) row.variationalSpread = variationalSpreads[symbol];
       if (grvtSpreads[symbol] !== undefined) row.grvtSpread = grvtSpreads[symbol];
       if (etherealSpreads[symbol] !== undefined) row.etherealSpread = etherealSpreads[symbol];
+      if (nadoSpreads[symbol] !== undefined) row.nadoSpread = nadoSpreads[symbol];
 
       // Keep generic spread as Binance's for compatibility if needed, or average/best
       if (binanceSpreads[symbol] !== undefined) {
@@ -124,7 +134,7 @@ export const buildTableRows = (
 
       // Populate market prices
       row.marketPrices = {};
-      const priceSources = ['binance', 'aster', 'paradex', 'variational', 'grvt', 'ethereal'];
+      const priceSources = ['binance', 'aster', 'paradex', 'variational', 'grvt', 'ethereal', 'nado'];
       priceSources.forEach(source => {
         if (marketPrices[source] && marketPrices[source][symbol]) {
           row.marketPrices![source] = marketPrices[source][symbol];
@@ -143,6 +153,7 @@ export const buildTableRows = (
         paradexFunding,
         etherealFunding,
         dydxFunding,
+        nadoFunding,
       ].filter(
         (value) => value !== undefined
       );
@@ -193,6 +204,10 @@ export const buildTableRows = (
 
       if (dydxFunding !== undefined) {
         row.dydxFunding = dydxFunding;
+      }
+
+      if (nadoFunding !== undefined) {
+        row.nadoFunding = nadoFunding;
       }
 
       if (lighterFunding !== undefined && edgexFunding !== undefined) {
@@ -288,6 +303,9 @@ export const buildDisplayRow = (row: TableRow, columns: SortKey[]): DisplayRow =
       case "dydxFunding":
         accumulator[column] = formatRateValue(row.dydxFunding);
         break;
+      case "nadoFunding":
+        accumulator[column] = formatRateValue(row.nadoFunding);
+        break;
       case "bidAskSpread":
         accumulator[column] = formatRateValue(row.bidAskSpread);
         break;
@@ -296,6 +314,9 @@ export const buildDisplayRow = (row: TableRow, columns: SortKey[]): DisplayRow =
         break;
       case "etherealSpread":
         accumulator[column] = formatRateValue(row.etherealSpread);
+        break;
+      case "nadoSpread":
+        accumulator[column] = formatRateValue(row.nadoSpread);
         break;
       case "binanceSpread":
         accumulator[column] = formatRateValue(row.binanceSpread);

@@ -15,6 +15,7 @@ export interface TableRow {
   paradexFunding?: number;
   etherealFunding?: number;
   dydxFunding?: number;
+  nadoFunding?: number;
   bidAskSpread?: number; // Kept for backwards compatibility or aggregate
   binanceSpread?: number;
   asterSpread?: number;
@@ -22,6 +23,7 @@ export interface TableRow {
   variationalSpread?: number;
   grvtSpread?: number;
   etherealSpread?: number;
+  nadoSpread?: number;
   lighterEdgexArb?: number;
   lighterGrvtArb?: number;
   edgexGrvtArb?: number;
@@ -56,6 +58,7 @@ export type SortKey = keyof Pick<
   | "paradexFunding"
   | "etherealFunding"
   | "dydxFunding"
+  | "nadoFunding"
   | "bidAskSpread"
   | "binanceSpread"
   | "asterSpread"
@@ -63,6 +66,7 @@ export type SortKey = keyof Pick<
   | "variationalSpread"
   | "grvtSpread"
   | "etherealSpread"
+  | "nadoSpread"
   | "lighterEdgexArb"
   | "lighterGrvtArb"
   | "edgexGrvtArb"

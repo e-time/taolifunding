@@ -14,6 +14,7 @@ interface TableRow {
   paradexFunding?: number;
   etherealFunding?: number;
   dydxFunding?: number;
+  nadoFunding?: number;
   
   binanceSpread?: number;
   asterSpread?: number;
@@ -21,11 +22,15 @@ interface TableRow {
   variationalSpread?: number;
   grvtSpread?: number;
   etherealSpread?: number;
+  nadoSpread?: number;
 
   maxArbSpread?: number;
   shortExchange?: string;
   longExchange?: string;
+  shortExchangeSpread?: number;
+  longExchangeSpread?: number;
   estimatedProfit?: number;
+  netProfit?: number;
   bidAskSpread?: number;
   openCost?: number;
   closeCost?: number;
@@ -45,6 +50,7 @@ const EXCHANGES = [
   { key: 'paradexFunding', label: 'Paradex' },
   { key: 'etherealFunding', label: 'Ethereal' },
   { key: 'dydxFunding', label: 'dYdX' },
+  { key: 'nadoFunding', label: 'Nado' },
 ];
 
 function formatRate(value: number | undefined | null) {
@@ -65,12 +71,13 @@ function App() {
     EXCHANGES.reduce((acc, ex) => ({ ...acc, [ex.key]: true }), {})
   );
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({
-    key: 'maxArbSpread',
+    key: 'netProfit',
     direction: 'desc',
   });
   const [loading, setLoading] = useState(true);
   const [capital, setCapital] = useState<number>(1000);
   const [symbolFilter, setSymbolFilter] = useState('');
+  const [filterProfitable, setFilterProfitable] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -133,11 +140,15 @@ function App() {
               if (exKey === 'variationalFunding') return row.variationalSpread ?? 0.001;
               if (exKey === 'grvtFunding') return row.grvtSpread ?? 0.0005;
               if (exKey === 'etherealFunding') return row.etherealSpread ?? 0.0005;
+              if (exKey === 'nadoFunding') return row.nadoSpread ?? 0.0005;
               return 0.0005;
           };
 
           const shortExchangeKey = EXCHANGES.find(e => e.label === maxExchange)?.key || '';
           const longExchangeKey = EXCHANGES.find(e => e.label === minExchange)?.key || '';
+
+          const shortSpread = getSpread(shortExchangeKey);
+          const longSpread = getSpread(longExchangeKey);
 
           let openCost: number | null = null;
           let closeCost: number | null = null;
@@ -172,15 +183,21 @@ function App() {
           }
 
           const grossProfit = capital * spread * 3;
+          const totalCostRate = (openCost || 0) + (closeCost || 0);
+          const totalCostAmount = totalCostRate * capital;
+          const netProfit = grossProfit - totalCostAmount;
 
           return {
               ...row,
               maxArbSpread: spread,
               shortExchange: maxExchange,
               longExchange: minExchange,
+              shortExchangeSpread: shortSpread,
+              longExchangeSpread: longSpread,
               estimatedProfit: grossProfit,
               openCost: openCost,
-              closeCost: closeCost
+              closeCost: closeCost,
+              netProfit: netProfit
           };
       }
 
@@ -189,17 +206,26 @@ function App() {
           maxArbSpread: 0,
           shortExchange: undefined,
           longExchange: undefined,
+          shortExchangeSpread: 0,
+          longExchangeSpread: 0,
           estimatedProfit: 0,
           openCost: 0,
-          closeCost: 0
+          closeCost: 0,
+          netProfit: -Infinity
       };
     });
   }, [rows, visibleExchanges, capital]);
 
   const sortedRows = useMemo(() => {
-    const filtered = processedRows.filter(row => 
-      row.symbol.toLowerCase().includes(symbolFilter.toLowerCase())
-    );
+    const filtered = processedRows.filter(row => {
+      const matchesSymbol = row.symbol.toLowerCase().includes(symbolFilter.toLowerCase());
+      if (!matchesSymbol) return false;
+
+      if (filterProfitable) {
+        return (row.netProfit || 0) > 0;
+      }
+      return true;
+    });
     const sorted = [...filtered];
     sorted.sort((a, b) => {
       const aVal = a[sortConfig.key];
@@ -220,11 +246,11 @@ function App() {
       return sortConfig.direction === 'asc' ? numA - numB : numB - numA;
     });
     return sorted;
-  }, [processedRows, sortConfig]);
+  }, [processedRows, sortConfig, symbolFilter, filterProfitable]);
 
   const topOpportunities = useMemo(() => {
     return [...processedRows]
-      .sort((a, b) => (b.maxArbSpread || 0) - (a.maxArbSpread || 0))
+      .sort((a, b) => (b.netProfit || 0) - (a.netProfit || 0))
       .slice(0, 3);
   }, [processedRows]);
 
@@ -246,8 +272,8 @@ function App() {
               <span className="badge badge-long">↑</span> {opp.longExchange}
             </div>
             <div style={{marginTop: '5px', display: 'flex', justifyContent: 'space-between'}}>
-              <span style={{color: '#4caf50', fontWeight: 'bold'}}>Profit: ${opp.estimatedProfit?.toFixed(2)}/d</span>
-              <span style={{color: '#f44336'}}>Open: {formatRate(opp.openCost)} | Close: {formatRate(opp.closeCost)}</span>
+              <span style={{color: '#4caf50', fontWeight: 'bold'}}>Net Profit: ${opp.netProfit?.toFixed(2)}/d</span>
+              <span style={{color: '#f44336', fontSize: '0.8em'}}>Cost: ${((opp.openCost || 0) + (opp.closeCost || 0)) * capital < 1 ? '<1' : (((opp.openCost || 0) + (opp.closeCost || 0)) * capital).toFixed(0)}</span>
             </div>
           </div>
         ))}
@@ -273,6 +299,21 @@ function App() {
             style={{background: '#333', color: '#fff', border: '1px solid #555', padding: '5px', borderRadius: '4px', width: '120px'}}
           />
         </div>
+        <button
+          onClick={() => setFilterProfitable(!filterProfitable)}
+          style={{
+            background: filterProfitable ? '#4caf50' : '#333',
+            color: '#fff',
+            border: '1px solid #555',
+            padding: '5px 10px',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: filterProfitable ? 'bold' : 'normal',
+            marginRight: '20px'
+          }}
+        >
+          {filterProfitable ? 'Show Profitable Only (24h)' : 'Filter Profitable'}
+        </button>
         <strong>Show Exchanges:</strong>
         {EXCHANGES.map((ex) => (
           <label key={ex.key} className="exchange-toggle">
@@ -301,6 +342,9 @@ function App() {
               <th onClick={() => handleSort('estimatedProfit')} style={{minWidth: '100px'}}>
                  Est. 24h Profit {sortConfig.key === 'estimatedProfit' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
               </th>
+              <th onClick={() => handleSort('netProfit')} style={{minWidth: '100px'}}>
+                 Net Profit (24h) {sortConfig.key === 'netProfit' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+              </th>
               <th onClick={() => handleSort('openCost')} style={{minWidth: '100px'}}>
                  Open Cost {sortConfig.key === 'openCost' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
               </th>
@@ -323,14 +367,25 @@ function App() {
                 <td>{row.symbol}</td>
                 <td style={{fontWeight: 'bold', color: '#ffd700'}}>{formatRate(row.maxArbSpread)}</td>
                 <td style={{fontWeight: 'bold', color: '#4caf50'}}>${row.estimatedProfit?.toFixed(2)}</td>
+                <td style={{fontWeight: 'bold', color: row.netProfit && row.netProfit > 0 ? '#4caf50' : '#f44336'}}>
+                  {row.netProfit !== -Infinity && row.netProfit !== undefined ? `$${row.netProfit.toFixed(2)}` : '-'}
+                </td>
                 <td style={{color: '#f44336'}}>{formatRate(row.openCost)}</td>
                 <td style={{color: '#f44336'}}>{formatRate(row.closeCost)}</td>
                 <td>
                   {row.shortExchange ? (
                     <div className="strategy-cell">
-                      <span><span className="badge badge-short">↓</span>{row.shortExchange}</span>
+                      <span>
+                        <span className="badge badge-short">↓</span>
+                        {row.shortExchange} 
+                        <small style={{color: '#888', marginLeft: '4px'}}>({formatRate(row.shortExchangeSpread)})</small>
+                      </span>
                       <span style={{color: '#444'}}>|</span>
-                      <span><span className="badge badge-long">↑</span>{row.longExchange}</span>
+                      <span>
+                        <span className="badge badge-long">↑</span>
+                        {row.longExchange}
+                        <small style={{color: '#888', marginLeft: '4px'}}>({formatRate(row.longExchangeSpread)})</small>
+                      </span>
                     </div>
                   ) : '-'}
                 </td>

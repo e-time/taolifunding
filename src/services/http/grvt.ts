@@ -73,9 +73,18 @@ export async function fetchGrvtFundingRates(): Promise<Record<string, number>> {
         const payload = (await response.json()) as GrvtFundingResponse;
         const fundingPoint = payload.result?.[0] ?? null;
         if (fundingPoint) {
-          const value = fundingPoint.funding_rate_8_h_avg ?? fundingPoint.funding_rate ?? null;
-          if (value !== null && Number.isFinite(Number(value))) {
-            next[instrument.base.toUpperCase()] = Number(value / 100);
+          // Prefer raw funding_rate and normalize based on interval
+          const rawRate = Number(fundingPoint.funding_rate);
+          const interval = fundingPoint.funding_interval_hours || 8;
+          
+          if (Number.isFinite(rawRate)) {
+            // Rate is in percentage (e.g. 0.01 means 0.01%).
+            // Convert to decimal: 0.01 / 100.
+            // Then normalize to 8h.
+            const decimalRate = rawRate / 100;
+            const normalizedRate = decimalRate * (8 / interval);
+            
+            next[instrument.base.toUpperCase()] = normalizedRate;
           }
         }
       }

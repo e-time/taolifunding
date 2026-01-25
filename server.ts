@@ -8,6 +8,7 @@ import { fetchVariationalFundingRates, fetchVariationalBookTicker } from "./src/
 import { fetchParadexFundingRates, fetchParadexBookTicker } from "./src/services/http/paradex";
 import { fetchEtherealFundingRates, fetchEtherealBookTicker } from "./src/services/http/ethereal";
 import { fetchDydxFundingRates } from "./src/services/http/dydx";
+import { fetchNadoFundingRates, fetchNadoBookTicker } from "./src/services/http/nado";
 import { EdgexClient } from "./src/server/edgex-client";
 import { buildTableRows } from "./src/utils/table";
 import { normaliseSymbol } from "./src/utils/format";
@@ -26,12 +27,14 @@ let cache = {
   paradex: [] as any[],
   ethereal: [] as any[],
   dydx: [] as any[],
+  nado: [] as any[],
   binanceSpreads: {} as Record<string, number>,
   asterSpreads: {} as Record<string, number>,
   paradexSpreads: {} as Record<string, number>,
   variationalSpreads: {} as Record<string, number>,
   grvtSpreads: {} as Record<string, number>,
   etherealSpreads: {} as Record<string, number>,
+  nadoSpreads: {} as Record<string, number>,
   marketPrices: {} as Record<string, Record<string, { bid: number, ask: number }>>,
   lastUpdated: new Date(),
 };
@@ -41,7 +44,7 @@ async function updateCache() {
   const start = Date.now();
 
   try {
-    const [lighter, binanceIndex, binanceInfo, binanceTicker, grvt, grvtTicker, aster, asterTicker, backpack, hlPredicted, variational, variationalTicker, paradex, paradexTicker, ethereal, etherealTicker, dydx] = await Promise.allSettled([
+    const [lighter, binanceIndex, binanceInfo, binanceTicker, grvt, grvtTicker, aster, asterTicker, backpack, hlPredicted, variational, variationalTicker, paradex, paradexTicker, ethereal, etherealTicker, dydx, nado, nadoTicker] = await Promise.allSettled([
       fetchLighterFundingRates(),
       fetchBinancePremiumIndex(),
       fetchBinanceFundingInfo(),
@@ -59,6 +62,8 @@ async function updateCache() {
       fetchEtherealFundingRates(),
       fetchEtherealBookTicker(),
       fetchDydxFundingRates(),
+      fetchNadoFundingRates(),
+      fetchNadoBookTicker(),
     ]);
 
     if (lighter.status === "fulfilled") cache.lighter = lighter.value;
@@ -146,8 +151,8 @@ async function updateCache() {
         paradexTicker.value.forEach(t => {
             const bid = parseFloat(t.bidPrice);
             const ask = parseFloat(t.askPrice);
+            const symbol = t.symbol.toUpperCase();
             if (bid > 0 && ask > 0) {
-                const symbol = t.symbol.toUpperCase();
                 cache.paradexSpreads[symbol] = (ask - bid) / ask;
                 cache.marketPrices.paradex[symbol] = { bid, ask };
             }
@@ -169,17 +174,27 @@ async function updateCache() {
 
     if (dydx.status === "fulfilled") cache.dydx = dydx.value;
 
+    if (nado.status === "fulfilled") cache.nado = nado.value;
+    if (nadoTicker.status === "fulfilled") {
+        cache.nadoSpreads = {};
+        cache.marketPrices.nado = {};
+        Object.entries(nadoTicker.value).forEach(([symbol, prices]) => {
+            const { bid, ask } = prices;
+            if (bid > 0 && ask > 0) {
+                cache.nadoSpreads[symbol] = (ask - bid) / ask;
+                cache.marketPrices.nado[symbol] = { bid, ask };
+            }
+        });
+    }
+
     cache.lastUpdated = new Date();
     
     // Log verification sample
     const btcSpread = cache.binanceSpreads['BTCUSDT'] || 0;
-    const asterBtcSpread = cache.asterSpreads['BTC'] || 0;
-    const paradexBtcSpread = cache.paradexSpreads['BTC'] || 0;
-    const grvtBtcSpread = cache.grvtSpreads['BTC'] || 0;
-    const etherealBtcSpread = cache.etherealSpreads['BTC'] || 0;
+    const nadoBtcSpread = cache.nadoSpreads['BTC'] || 0;
     
     console.log(`Cache updated in ${Date.now() - start}ms`);
-    console.log(`[Sample Spreads] BTC - Binance: ${(btcSpread*100).toFixed(4)}% | Aster: ${(asterBtcSpread*100).toFixed(4)}% | Paradex: ${(paradexBtcSpread*100).toFixed(4)}% | GRVT: ${(grvtBtcSpread*100).toFixed(4)}% | Ethereal: ${(etherealBtcSpread*100).toFixed(4)}%`);
+    console.log(`[Sample Spreads] BTC - Binance: ${(btcSpread*100).toFixed(4)}% | Nado: ${(nadoBtcSpread*100).toFixed(4)}%`);
   } catch (e) {
     console.error("Error updating cache:", e);
   }
@@ -222,12 +237,14 @@ const server = Bun.serve({
         cache.paradex,
         cache.ethereal,
         cache.dydx,
+        cache.nado,
         cache.binanceSpreads,
         cache.asterSpreads,
         cache.paradexSpreads,
         cache.variationalSpreads,
         cache.grvtSpreads,
         cache.etherealSpreads,
+        cache.nadoSpreads,
         cache.marketPrices
       );
 
