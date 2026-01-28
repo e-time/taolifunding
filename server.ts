@@ -1,6 +1,6 @@
 import { fetchLighterFundingRates } from "./src/services/http/lighter";
 import { fetchBinancePremiumIndex, fetchBinanceFundingInfo, fetchBinanceBookTicker } from "./src/services/http/binance";
-import { fetchGrvtFundingRates, fetchGrvtBookTicker } from "./src/services/http/grvt";
+import { fetchGrvtMarketData } from "./src/services/http/grvt";
 import { fetchAsterFundingRates, fetchAsterBookTicker } from "./src/services/http/aster";
 import { fetchBackpackFundingRates } from "./src/services/http/backpack";
 import { fetchHyperliquidPredictedFundings, mapHlPerpToEntries } from "./src/services/http/hyperliquid";
@@ -44,13 +44,12 @@ async function updateCache() {
   const start = Date.now();
 
   try {
-    const [lighter, binanceIndex, binanceInfo, binanceTicker, grvt, grvtTicker, aster, asterTicker, backpack, hlPredicted, variational, variationalTicker, paradex, paradexTicker, ethereal, etherealTicker, dydx, nado, nadoTicker] = await Promise.allSettled([
+    const [lighter, binanceIndex, binanceInfo, binanceTicker, grvtData, aster, asterTicker, backpack, hlPredicted, variational, variationalTicker, paradex, paradexTicker, ethereal, etherealTicker, dydx, nado, nadoTicker] = await Promise.allSettled([
       fetchLighterFundingRates(),
       fetchBinancePremiumIndex(),
       fetchBinanceFundingInfo(),
       fetchBinanceBookTicker(),
-      fetchGrvtFundingRates(),
-      fetchGrvtBookTicker(),
+      fetchGrvtMarketData(),
       fetchAsterFundingRates(),
       fetchAsterBookTicker(),
       fetchBackpackFundingRates(),
@@ -97,17 +96,10 @@ async function updateCache() {
         });
     }
 
-    if (grvt.status === "fulfilled") cache.grvt = grvt.value;
-    if (grvtTicker.status === "fulfilled") {
-        cache.grvtSpreads = {};
-        cache.marketPrices.grvt = {};
-        Object.entries(grvtTicker.value).forEach(([symbol, prices]) => {
-            const { bid, ask } = prices;
-            if (bid > 0 && ask > 0) {
-                cache.grvtSpreads[symbol] = (ask - bid) / ask;
-                cache.marketPrices.grvt[symbol] = { bid, ask };
-            }
-        });
+    if (grvtData.status === "fulfilled") {
+        cache.grvt = grvtData.value.rates;
+        cache.grvtSpreads = grvtData.value.spreads;
+        cache.marketPrices.grvt = grvtData.value.prices;
     }
 
     if (aster.status === "fulfilled") cache.aster = aster.value;
