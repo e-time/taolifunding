@@ -200,7 +200,7 @@ setInterval(updateCache, 10 * 1000);
 
 const server = Bun.serve({
   port: 3001,
-  fetch(req) {
+  async fetch(req) {
     const url = new URL(req.url);
 
     // Enable CORS
@@ -249,6 +249,24 @@ const server = Bun.serve({
           "Access-Control-Allow-Origin": "*",
         },
       });
+    }
+
+    // Static File Serving
+    let filePath = url.pathname;
+    if (filePath === "/") {
+      filePath = "/index.html";
+    }
+    
+    // Prevent directory traversal
+    if (filePath.includes("..")) {
+        return new Response("Not Found", { status: 404 });
+    }
+
+    const buildDir = "./web/dist";
+    const file = Bun.file(`${buildDir}${filePath}`);
+
+    if (await file.exists()) {
+      return new Response(file);
     }
 
     return new Response("Not Found", { status: 404 });
