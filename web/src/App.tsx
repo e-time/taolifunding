@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import './index.css';
 
 interface TableRow {
@@ -35,6 +35,12 @@ interface TableRow {
   openCost?: number;
   closeCost?: number;
   marketPrices?: Record<string, { bid: number; ask: number }>;
+  longBuyPrice?: number;
+  shortSellPrice?: number;
+  priceDiff?: number;
+  shortBuyPrice?: number;
+  longSellPrice?: number;
+  closePriceDiff?: number;
   [key: string]: any;
 }
 
@@ -64,6 +70,66 @@ function getClass(value: number | undefined | null) {
   return value > 0 ? 'positive' : value < 0 ? 'negative' : 'neutral';
 }
 
+function getPercentile(value: number, history: number[]) {
+  if (!history || history.length === 0) return 0;
+  const sorted = [...history, value].sort((a, b) => a - b);
+  const index = sorted.findIndex(v => v === value);
+  return Math.round((index / (sorted.length - 1)) * 100);
+}
+
+const HistogramModal = ({ data, title, onClose }: { data: number[], title: string, onClose: () => void }) => {
+  const buckets = 20;
+  if (!data || data.length === 0) return null;
+
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 0.0001; // Avoid divide by zero
+  const bucketSize = range / buckets;
+
+  const histogram = new Array(buckets).fill(0);
+  data.forEach(val => {
+    const bucketIndex = Math.min(Math.floor((val - min) / bucketSize), buckets - 1);
+    histogram[bucketIndex]++;
+  });
+
+  const maxCount = Math.max(...histogram);
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000
+    }} onClick={onClose}>
+      <div style={{
+        background: '#2a2a2a', padding: '20px', borderRadius: '8px', minWidth: '400px', maxWidth: '90%'
+      }} onClick={e => e.stopPropagation()}>
+        <h3 style={{marginTop: 0, color: '#e0e0e0'}}>{title} Distribution (Last ~10m)</h3>
+        <div style={{display: 'flex', alignItems: 'flex-end', height: '200px', gap: '2px', padding: '10px 0'}}>
+          {histogram.map((count, i) => (
+            <div key={i} style={{
+              flex: 1,
+              background: '#4caf50',
+              height: `${(count / maxCount) * 100}%`,
+              position: 'relative',
+              minHeight: '1px'
+            }} title={`Range: ${formatRate(min + i * bucketSize)} - ${formatRate(min + (i + 1) * bucketSize)}\nCount: ${count}`}>
+            </div>
+          ))}
+        </div>
+        <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '0.8em', color: '#888', marginTop: '5px'}}>
+          <span>{formatRate(min)}</span>
+          <span>{formatRate(max)}</span>
+        </div>
+        <div style={{textAlign: 'right', marginTop: '15px'}}>
+           <button onClick={onClose} style={{
+             background: '#333', color: '#fff', border: '1px solid #555',
+             padding: '5px 15px', borderRadius: '4px', cursor: 'pointer'
+           }}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 function App() {
   const [rows, setRows] = useState<TableRow[]>([]);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
@@ -78,6 +144,10 @@ function App() {
   const [capital, setCapital] = useState<number>(1000);
   const [symbolFilter, setSymbolFilter] = useState('');
   const [filterProfitable, setFilterProfitable] = useState(false);
+  const [selectedHistory, setSelectedHistory] = useState<{ data: number[], title: string } | null>(null);
+  const historyRef = useRef<Record<string, { openCosts: number[], closeCosts: number[] }>>({});
+
+
 
   useEffect(() => {
     const fetchData = async () => {
@@ -152,6 +222,12 @@ function App() {
 
           let openCost: number | null = null;
           let closeCost: number | null = null;
+          let longBuyPrice = 0;
+          let shortSellPrice = 0;
+          let priceDiff = 0;
+          let shortBuyPrice = 0;
+          let longSellPrice = 0;
+          let closePriceDiff = 0;
 
           if (row.marketPrices) {
               const getSource = (key: string) => key.replace('Funding', '').toLowerCase();
@@ -164,12 +240,20 @@ function App() {
               if (shortPrices && longPrices) {
                   const sellPriceOpen = shortPrices.bid;
                   const buyPriceOpen = longPrices.ask;
+                  longBuyPrice = buyPriceOpen;
+                  shortSellPrice = sellPriceOpen;
+                  priceDiff = buyPriceOpen - sellPriceOpen;
+
                   if (sellPriceOpen > 0) {
                       openCost = (buyPriceOpen - sellPriceOpen) / sellPriceOpen;
                   }
 
                   const buyPriceClose = shortPrices.ask;
                   const sellPriceClose = longPrices.bid;
+                  shortBuyPrice = buyPriceClose;
+                  longSellPrice = sellPriceClose;
+                  closePriceDiff = buyPriceClose - sellPriceClose;
+
                   if (buyPriceClose > 0) {
                       closeCost = (buyPriceClose - sellPriceClose) / buyPriceClose;
                   }
@@ -197,7 +281,13 @@ function App() {
               estimatedProfit: grossProfit,
               openCost: openCost,
               closeCost: closeCost,
-              netProfit: netProfit
+              netProfit: netProfit,
+              longBuyPrice,
+              shortSellPrice,
+              priceDiff,
+              shortBuyPrice,
+              longSellPrice,
+              closePriceDiff
           };
       }
 
@@ -211,10 +301,35 @@ function App() {
           estimatedProfit: 0,
           openCost: 0,
           closeCost: 0,
-          netProfit: -Infinity
+          netProfit: -Infinity,
+          longBuyPrice: 0,
+          shortSellPrice: 0,
+          priceDiff: 0,
+          shortBuyPrice: 0,
+          longSellPrice: 0,
+          closePriceDiff: 0
       };
     });
   }, [rows, visibleExchanges, capital]);
+
+  useEffect(() => {
+    processedRows.forEach(row => {
+        if (!historyRef.current[row.symbol]) {
+            historyRef.current[row.symbol] = { openCosts: [], closeCosts: [] };
+        }
+        const h = historyRef.current[row.symbol];
+        if (!h) return;
+        
+        if (typeof row.openCost === 'number') {
+            h.openCosts.push(row.openCost);
+            if (h.openCosts.length > 120) h.openCosts.shift();
+        }
+        if (typeof row.closeCost === 'number') {
+            h.closeCosts.push(row.closeCost);
+            if (h.closeCosts.length > 120) h.closeCosts.shift();
+        }
+    });
+  }, [processedRows]);
 
   const sortedRows = useMemo(() => {
     const filtered = processedRows.filter(row => {
@@ -370,8 +485,44 @@ function App() {
                 <td style={{fontWeight: 'bold', color: row.netProfit && row.netProfit > 0 ? '#4caf50' : '#f44336'}}>
                   {row.netProfit !== -Infinity && row.netProfit !== undefined ? `$${row.netProfit.toFixed(2)}` : '-'}
                 </td>
-                <td style={{color: '#f44336'}}>{formatRate(row.openCost)}</td>
-                <td style={{color: '#f44336'}}>{formatRate(row.closeCost)}</td>
+                <td 
+                  style={{color: '#f44336', cursor: 'pointer'}} 
+                  onClick={() => setSelectedHistory({
+                    data: historyRef.current[row.symbol]?.openCosts || [],
+                    title: `${row.symbol} Open Cost`
+                  })}
+                >
+                  <div>{formatRate(row.openCost)}</div>
+                  <div style={{fontSize: '0.8em', color: '#aaa'}}>
+                    (P{getPercentile(row.openCost, historyRef.current[row.symbol]?.openCosts || [])})
+                  </div>
+                  {row.longBuyPrice > 0 && (
+                    <div style={{fontSize: '0.75em', marginTop: '4px', color: '#ccc', textAlign: 'right'}}>
+                       <div title="Buy Price (Long)">B: {row.longBuyPrice}</div>
+                       <div title="Sell Price (Short)">S: {row.shortSellPrice}</div>
+                       <div title="Spread Diff" style={{color: '#ffd700'}}>D: {row.priceDiff?.toFixed(4)}</div>
+                    </div>
+                  )}
+                </td>
+                <td 
+                  style={{color: '#f44336', cursor: 'pointer'}}
+                  onClick={() => setSelectedHistory({
+                    data: historyRef.current[row.symbol]?.closeCosts || [],
+                    title: `${row.symbol} Close Cost`
+                  })}
+                >
+                  <div>{formatRate(row.closeCost)}</div>
+                  <div style={{fontSize: '0.8em', color: '#aaa'}}>
+                    (P{getPercentile(row.closeCost, historyRef.current[row.symbol]?.closeCosts || [])})
+                  </div>
+                  {row.shortBuyPrice > 0 && (
+                    <div style={{fontSize: '0.75em', marginTop: '4px', color: '#ccc', textAlign: 'right'}}>
+                       <div title="Buy Price (Short)">B: {row.shortBuyPrice}</div>
+                       <div title="Sell Price (Long)">S: {row.longSellPrice}</div>
+                       <div title="Spread Diff" style={{color: '#ffd700'}}>D: {row.closePriceDiff?.toFixed(4)}</div>
+                    </div>
+                  )}
+                </td>
                 <td>
                   {row.shortExchange ? (
                     <div className="strategy-cell">
@@ -404,6 +555,13 @@ function App() {
       <p style={{textAlign: 'center', color: '#666', marginTop: '20px'}}>
         Last updated: {lastUpdated ? new Date(lastUpdated).toLocaleString() : '-'}
       </p>
+      {selectedHistory && (
+        <HistogramModal 
+          data={selectedHistory.data} 
+          title={selectedHistory.title} 
+          onClose={() => setSelectedHistory(null)} 
+        />
+      )}
     </div>
   );
 }
